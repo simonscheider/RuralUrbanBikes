@@ -12,6 +12,7 @@
 import numpy as np
 import pandas as pd
 from pandas import Series
+import arcpy
 import csv
 import glob
 import json
@@ -37,26 +38,49 @@ def main():
     out = "C:/Temp/Joinedtracks/Joinedtracks/Cities/stats.json"
     with open(out, 'w') as fp:
         for f in glob.glob("C:/Temp/Joinedtracks/Joinedtracks/Cities/*.csv"):
-            l = file_to_str(f, [2], ';', headerl = 0)
+            l = file_to_str(f, [2], ',', headerl = 0)
+            person = str(l['person'].iloc[0])
             numberoftracks = l.track.value_counts().size
             #print numberoftracks
             durationtable = l.groupby(['track'])['datetime'].agg(['min','max'])
             durationtable['difference']= durationtable['max']-durationtable['min']
+            durationtabled = {k:{str(k2):str(v2) for k2,v2 in v.items()} for k,v in durationtable.to_dict().items()}
+##            for row in durationtable.itertuples():
+##                durationtabled[row.index]= row.difference
+                #break
             #print durationtable
             #print durationtable.difference.value_counts()
             #This extracts and counts the purposes of a track
             purposestats = (l.groupby('track')['purto'].agg('max')).value_counts()
             #print(purposestats)
-            person = str(l['person'].iloc[0])
-            personstats[person]={'numberoftracks': numberoftracks, 'purposestats': purposestats, 'durationtable': durationtable}
+            purposestatsd = {}
+            for k in purposestats.keys():
+                purposestatsd[str(k)]= str(purposestats[k])
             #Getting lengths
+            tracklength ={}
+            oldpoint = {}
+            oldtrack = l['track'].iloc[0]
+            dist = 0
             for row in l.itertuples():
-                print row.X
-                print row.Y
+                spatial_reference = arcpy.SpatialReference(4326)
+                pnt_geometry = arcpy.PointGeometry(arcpy.Point(row.X, row.Y), spatial_reference)
+                point = pnt_geometry.projectAs(arcpy.SpatialReference(28992))
+                #print point.firstPoint.X
+                #print point.firstPoint.Y
+                if oldpoint != {} and row.track == oldtrack:
+                    dist += point.distanceTo(oldpoint)
+                    #print (str(row.track)+ ':' +str(dist))
+                    tracklength[str(row.track)]=str(dist)
+                else:
+                    dist = 0
+                oldtrack = row.track
+                oldpoint = point
+            #print  tracklength
+            personstats[person]={'tracklength':tracklength, 'numberoftracks': numberoftracks, 'purposestats': purposestatsd, 'durationtable': durationtabled}
             i+= 1
             if i == 1:
                 print personstats
-                #json.dump(personstats,fp)
+                json.dump(personstats,fp)
                 break
 
 
